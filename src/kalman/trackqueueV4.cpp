@@ -29,6 +29,30 @@ void TrackQueueV4::push(Eigen::Matrix<double, 4, 1>& input_pose, TimePoint t) {
     Eigen::Matrix<double, 3, 1> pose;
     pose << input_pose[0] / 1000.0, input_pose[1] / 1000.0, input_pose[2] / 1000.0;
     // pose << input_pose[0], input_pose[1], input_pose[2];
+	
+/*新增*/
+    //计算预测误差(如果存在有效的上一次预测状态)
+    if(last_state_!=nullptr && has_valid_predict){
+        //计算延迟时间
+        delay_time =  getDoubleOfS(last_state_->last_t ,t);
+        //进行位置的预测
+        last_predict_pose_4 = getPose(delay_time);
+        if(last_predict_pose_4 == Eigen::Matrix<double, 4, 1>::Zero()){
+            std::cout<<"predict failed,has no state to predict.\n";
+        }
+        last_predict_pose_3[0] = last_predict_pose_4[0];
+        last_predict_pose_3[1] = last_predict_pose_4[1];
+        last_predict_pose_3[2] = last_predict_pose_4[2];
+        //计算当前观测与上一次预测之间的误差
+        double cur_error = getDistance(pose , last_predict_pose_3);
+        last_error = cur_error;
+
+        //打印调试信息
+        rm::message("trackqueueV4 predict error:",last_error);
+        rm::message("trackqueueV4 predict delay:",delay_time);
+    }
+    /*********************************************************/
+
 
     double min_distance = 1e4;
     TQstateV4* best_state = nullptr;
@@ -93,11 +117,19 @@ void TrackQueueV4::push(Eigen::Matrix<double, 4, 1>& input_pose, TimePoint t) {
         best_state->model->update(funcH_, pose);
 
         list_.push_back(best_state);
+        
+        /*新增,因为这里目标没有了，所以上一次依据last_state_为依据预测的有效位姿也没有用了*/
+        has_valid_predict = false;
+        /**/
     } else {
         funcA_.dt = getDoubleOfS(best_state->last_t, t);
         best_state->refresh(input_pose_m, t);
         best_state->model->predict(funcA_);
         best_state->model->update(funcH_, pose);
+        /*新增*/
+        if(last_state_!=nullptr){
+            has_valid_predict = true;
+        }
     }
 }
 
